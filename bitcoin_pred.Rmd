@@ -1,0 +1,172 @@
+---
+title: "Bitcoin Price Prediction: A Comparison of the Predictive Accuracy of Forecasting and Machine Learning Techniques"
+author:
+  - name: "Bach Phung ^[Email: phungbq@miamioh.edu]"
+    affiliation: Farmer School of Business, Miami University
+  - name: "Lin Lu ^[Email: llu@fairfield.edu | Website: <a href=\"https://facultyprofile.fairfield.edu/?uname=llu\">Fairfield University Official</a>]"
+    affiliation: Charles F. Dolan School of Business, Fairfield University
+  - name: "Waldyn Martinez ^[Email: martinwg@miamioh.edu | Phone: +1-513-529-2154 | Website: <a href=\"https://miamioh.edu/fsb/directory/?up=/directory/martinwg\">Miami University Official</a>]"
+    affiliation: Farmer School of Business, Miami University
+  - name: "Fadel M. Megahed ^[Email: fmegahed@miamioh.edu | Phone: +1-513-529-4185 | Website: <a href=\"https://miamioh.edu/fsb/directory/?up=/directory/megahefm\">Miami University Official</a>]"
+    affiliation: Farmer School of Business, Miami University
+bibliography: refs.bib
+csl: apa.csl
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+output: 
+  html_document:
+    css: custom.css
+    code_folding: show
+    code_download: TRUE
+    number_sections: TRUE
+    paged_df: TRUE
+    toc: TRUE
+    toc_float: TRUE
+    theme: readable
+  includes:
+    in_header: structure.tex
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(cache = TRUE,
+                      echo = TRUE,
+                      warning = FALSE,
+                      message = FALSE,
+                      progress = FALSE, 
+                      verbose = FALSE,
+                      dev = c('png', 'pdf', 'tiff', 'postscript'),
+                      fig.retina = 2,
+                      out.width = '100%',
+                      fig.asp = 0.7)
+
+options(qwraps2_markup = "markdown")
+
+# Setting properties for the default theme_bw() behavior for all plots
+if(require(ggplot2) == FALSE) install.packages("ggplot2")
+library(ggplot2) ; theme_set(theme_bw(base_size = 11) + theme(legend.position = 'top')) 
+
+# Setting default color palettes to RColorBrewer Palettes
+if(require(RColorBrewer) == FALSE) install.packages("RColorBrewer")
+scale_colour_discrete = scale_color_brewer(palette = "Dark2")
+
+# Setting the random seed and chunk dependencies
+knitr::opts_chunk$set(cache.extra = set.seed(2021),
+                      autodep = TRUE) 
+
+```
+
+
+# R Setup and Required Packages
+In this project, the open-source R programming language is used to model the price of Bitcoin using forecasting and machine learning techniques. R is maintained by an international team of developers who make the language available at [The Comprehensive R Archive Network](https://cran.r-project.org/). Readers interested in reusing our code and reproducing our results should have R installed locally on their machines. R can be installed on a number of different operating systems (see [Windows](https://cran.r-project.org/bin/windows/), [Mac](https://cran.r-project.org/bin/macosx/), and [Linux](https://cran.r-project.org/bin/linux/) for the installation instructions for these systems). We also recommend using the RStudio interface for R. The reader can [download RStudio](http://www.rstudio.com/ide) for free by following the instructions at the link. For non-R users, we recommend the [Hands-on Programming with R](https://rstudio-education.github.io/hopr/packages.html) for a brief overview of the software's functionality. Hereafter, we assume that the reader has an introductory understanding of the R programming language.
+
+In the code chunk below, we load the packages used to support our analysis. Note that the code of this and any of the code chunks can be hidden by clicking on the 'Hide' button to facilitate the navigation. **The reader can hide all code and/or download the Rmd file associated with this document by clicking on the Code button on the top right corner of this document.** Our input and output files can also be accessed/ downloaded from [fmegahed/bitcoin_pred](https://github.com/fmegahed/bitcoin_pred).
+
+
+```{r packages, cache=FALSE}
+# Check and install if these packages are not found locally on machine
+# If pacman and devtools are not on the machine, install them
+if(require(pacman)==FALSE) install.packages("pacman")
+if(require(devtools)==FALSE) install.packages("devtools")
+
+# Using pacman to install/load the required packages
+pacman::p_load(
+  # data analysis packages
+  tidyverse, tidyquant, tidymodels, timetk, magrittr,
+  # for time-series forecasting
+  fpp2, 
+  # to extract models from tidy models output
+  sweep, 
+  # to read json data
+  jsonlite, 
+  # for nicely printed outputs
+  DT, pander, stargazer, knitr,
+  # for exploratory data analysis
+  skimr, DataExplorer,
+  # for plots
+  scales, plotly) 
+```
+
+---
+
+# Extracting the Historical Daily Data for Bitcoin
+
+In this project, we chose to use the [CryptoCompare API](https://min-api.cryptocompare.com/documentation?key=Historical&cat=dataHistoday) to extract the daily Bitcoin ($BTC) OHLCV data. Note that the use of the API requires the creation of an `cc_api_key`, which can be created for free at <https://www.cryptocompare.com/cryptopian/api-keys>. To be able to run the code chunk below, the reader should either:  
+
+- Replace the string stored in `cc_api_key.R` with their API key; or alternatively   
+- Store their api_key in an .Rprofile file, which is what we are doing in this example to ensure the privacy of our api_keys.  
+
+```{r extractBitcoin, results='asis'}
+# Option 1: replace string with your api key and remove the # below
+# cc_api_key = "Your API key here" 
+
+# Option 2: include the cc_api_key = "Your API key here" in your .Rprofile
+# we are using option 2 & using this project variable below
+
+endingDate = ymd(Sys.Date() - 1) # our ending date of choice
+print( paste('Our ending date for the bitcoin data is', endingDate) )
+
+# The unix timestamp for our ending date is computed as follows
+unix_timestamp = as.POSIXct(endingDate, format = "%Y-%m-%d", 
+                            tz = "UTC") %>%   as.numeric()
+
+secs_per_day = 60*60*24 # number of seconds per day
+
+# Number of days between ending date and beginning of 2010
+num_days = seq.Date(from = endingDate, to = ymd("2010-01-01"),
+                    by = "-1 day") %>% length()
+
+# Sequence of days from endingDate to 2010-01-01 in unix time
+days_unix_time = seq(from = unix_timestamp, by = -secs_per_day, 
+                     length.out = num_days)
+
+# The 3 different API calls that are needed per the CC API
+base_url = "https://min-api.cryptocompare.com/data/v2/histoday?fsym=BTC&tsym=USD&limit=1999&toTs="
+urls = c(
+  paste0(base_url,days_unix_time[1], "&api_key=", cc_api_key),
+  paste0(base_url,days_unix_time[2001], "&api_key=", cc_api_key),
+  paste0(base_url,days_unix_time[4001], "&api_key=", cc_api_key)
+  )
+
+# Making the 3 API calls and extracting the JSON data into a list
+bitcoin_list = map(.x = urls, .f = fromJSON)
+
+# A custom function to extract the returned data from the call
+unlist_cc = function(x){
+  temp = x$Data$Data
+}
+
+# Creating one data.frame of all the data
+btc_df = map_df(.x = bitcoin_list, .f = unlist_cc)
+
+# Creating a proper date from the unix timestamp
+btc_df %<>% mutate(date = as_datetime(time) %>% as_date) %>% 
+  arrange(date)
+
+# Storing only rows where close >= 0.01
+btc_df %<>% filter(close >= 0.01)
+
+# checking to see if this will work from here
+write_rds(btc_df, 
+          '../results/btc_histDay.rds')
+```
+
+
+---
+
+
+
+
+
+
+# References {-}
+<div id="refs"></div>
+
+
+---
+
+
+# Appendix {-}
+In this appendix, we print all the R packages used in our analysis and their versions to assist with reproducing our results/analysis.
+
+```{r sessionInfo}
+pander::pander(sessionInfo(), compact = TRUE) # printing the session info
+```

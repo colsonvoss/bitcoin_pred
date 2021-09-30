@@ -1,0 +1,8 @@
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+.Rprofile
+bitcoin_pred_cache/
+bitcoin_pred_files/
+bitcoin_pred.html
