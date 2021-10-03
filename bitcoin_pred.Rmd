@@ -72,7 +72,7 @@ pacman::p_load(
   # data analysis packages
   tidyverse, tidyquant, tidymodels, timetk, magrittr,
   # for time-series forecasting
-  fpp2, 
+  fpp2, timetk, modeltime, 
   # to extract models from tidy models output
   sweep, 
   # to read json data
@@ -152,9 +152,62 @@ write_rds(btc_df,
 
 ---
 
+# Time-Series Approaches for Modeling Changes in BTC Price Over Time
 
 
+```{r statModels}
+nested_df = btc_df %>% 
+  # selecting only the date and closing price
+  select(date, close) %>%
+  # creating splits, with a prediction goal of 1-day ahead
+  # training data grows over time, with the first dataset ends
+  # on Dec 31, 2018
+  rolling_origin(
+    initial = which(btc_df$date == "2018-12-31"),
+    assess = 1,
+    cumulative = TRUE) %>%
+  # creating the following columns/variables in our nested data
+  mutate(
+    # extracting the training data from the splits
+    data = map(.x = splits, .f = analysis),
+    # extracting the training dates
+    trainDates = map(.x = data, .f = extract2, 'date'),
+    # extracting the ts of BTC closing price used for training
+    trainClose =  map(.x = data, .f = extract2, 'close'),
+    # extracting the 1-day ahead target data from the splits
+    target_data = map(.x = splits, .f = assessment),
+    # extracting the 1-day ahead date used for testing
+    targetDate = map(.x = target_data, .f = extract2, 'date'),
+    # extracting the 1-day ahead closing price used for testing
+    targetClose =  map_dbl(.x = target_data, .f = extract2, 'close'),
+    )
 
+ts_results = nested_df %>% 
+  # removing unneeded columns for time-series forecasting
+  select(-c(splits, data, trainDates, target_data, targetDate))
+
+ts_results %<>% 
+  # forecasting techniques
+  mutate(
+    # naive (random walk) forecast
+    naive = map(.x = trainClose, .f = naive, h = 1) %>% 
+      map_dbl(.f = extract2, "mean"),
+    # simple exponential smoothing forecast
+    ses = map(.x = trainClose, .f = ses, h = 1) %>% 
+      map_dbl(.f = extract2, "mean"),
+    # linear exponential smoothing (holt's) forecast
+    holt = map(.x = trainClose, .f = holt, h = 1) %>% 
+      map_dbl(.f = extract2, "mean"),
+    # auto.arima 1-day ahead forecast
+    arima = map(.x = trainClose, .f = auto.arima) %>% 
+      map(.f = forecast, h = 1) %>% 
+      map_dbl(.f = extract2, "mean")
+  )
+  
+
+write_rds(ts_results, 
+          '../results/initial_4_models.rds')
+```
 
 
 # References {-}
