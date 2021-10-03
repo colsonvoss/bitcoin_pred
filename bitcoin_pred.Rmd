@@ -146,7 +146,7 @@ btc_df %<>% filter(close >= 0.01)
 
 # checking to see if this will work from here
 write_rds(btc_df, 
-          '../results/btc_histDay.rds')
+          'results/btc_histDay.rds')
 ```
 
 
@@ -206,9 +206,13 @@ ts_results %<>%
   
 
 write_rds(ts_results, 
-          '../results/initial_4_models.rds')
+          'results/initial_4_models.rds')
 ```
 
+
+
+
+---
 
 # References {-}
 <div id="refs"></div>
